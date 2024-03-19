@@ -1,0 +1,40 @@
+{
+	"schemaVersion": 1,
+	"id": "mlcraft",
+	"version": "${version}",
+	"name": "MLCraft",
+	"description": "This is an mod that generates more realistic elevations and biomes.",
+	"authors": [
+		"David, Ryder, and Rolando"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "MIT",
+	"icon": "assets/mlcraft/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"net.mlcraft.elevationmod.MLCraft"
+		],
+		"client": [
+			"net.mlcraft.elevationmod.MLCraftClient"
+		],
+		"fabric-datagen": [
+			"net.mlcraft.elevationmod.MLCraftDataGenerator"
+		]
+	},
+	"mixins": [
+		"mlcraft.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.15.7",
+		"minecraft": "~1.20.4",
+		"java": ">=17",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
