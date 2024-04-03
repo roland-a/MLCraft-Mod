@@ -5,13 +5,15 @@
 	"name": "MLCraft",
 	"description": "This is an mod that generates more realistic elevations and biomes.",
 	"authors": [
-		"David, Ryder, and Rolando"
+		"David",
+		"Ryder",
+		"Rolando"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
 	},
-	"license": "MIT",
+	"license": "CC0-1.0",
 	"icon": "assets/mlcraft/icon.png",
 	"environment": "*",
 	"entrypoints": {
@@ -36,5 +38,6 @@
 	},
 	"suggests": {
 		"another-mod": "*"
-	}
+	},
+	"accessWidener": "mlcraft.accesswidener"
 }
