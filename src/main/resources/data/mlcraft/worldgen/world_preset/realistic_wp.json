@@ -4,10 +4,10 @@
       "type": "minecraft:overworld",
       "generator": {
         "type": "minecraft:noise",
-        "settings": "mlcraft:realistic",
+        "settings": "mlcraft:realistic_ns",
         "biome_source": {
-          "type": "minecraft:multi_noise",
-          "preset": "minecraft:overworld"
+          "type": "minecraft:fixed",
+          "biome": "minecraft:stony_peaks"
         }
       }
     },
