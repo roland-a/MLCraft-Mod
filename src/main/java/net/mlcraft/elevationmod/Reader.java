@@ -6,7 +6,8 @@ import net.minecraft.util.dynamic.CodecHolder;
 import net.minecraft.world.gen.densityfunction.DensityFunction;
 
 import java.awt.*;
-import java.io.IOException;
+import java.io.*;
+import java.util.ArrayList;
 
 import static javax.imageio.ImageIO.*;
 
@@ -39,27 +40,30 @@ public class Reader {
 
     public static final Codec<? extends DensityFunction> CODEC = Codec.unit(MC_NOISE);
 
-    public static double[][] elevation = null;
+    private static short[] elevation = null;
+    private static int length;
 
     public static void init() throws IOException {
-        var image = read(FabricLoader.getInstance().getConfigDir().resolve("mlcraft/elevation.png").toFile());
+        var file = FabricLoader.getInstance().getConfigDir().resolve("mlcraft/elevation").toFile();
 
-        elevation = new double[image.getWidth()][image.getHeight()];
+        var d = new DataInputStream(new FileInputStream(file));
 
-        for (int x = 0; x < image.getWidth(); x++){
-            for (int y = 0; y < image.getHeight(); y++){
-                int gray = new Color(image.getRGB(x,y)).getRed();
+        elevation = new short[d.available()/Short.BYTES];
 
-                elevation[x][y] = (gray / 255d) * 256 + 70;
-            }
+        for (int i = 0 ; i < elevation.length; i++){
+            elevation[i] = d.readShort();
         }
+
+        length = (int)Math.sqrt(elevation.length);
     }
 
     private static double getElevationAt(int x, int y){
-        x = Math.floorMod(x, elevation.length);
-        y = Math.floorMod(y, elevation[0].length);
+        x = Math.floorMod(x, length);
+        y = Math.floorMod(y, length);
 
-        return elevation[x][y];
+        var v = elevation[x*length+y];
+
+        return ((Short.toUnsignedInt(v) / 65535f) * 256) + 60;
     }
 
 }
