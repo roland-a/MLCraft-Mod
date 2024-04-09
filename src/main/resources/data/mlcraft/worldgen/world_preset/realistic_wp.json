@@ -7,7 +7,7 @@
         "settings": "mlcraft:realistic_ns",
         "biome_source": {
           "type": "minecraft:fixed",
-          "biome": "minecraft:stony_peaks"
+          "biome": "minecraft:snowy_taiga"
         }
       }
     },
