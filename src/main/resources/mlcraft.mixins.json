@@ -3,13 +3,6 @@
 	"package": "net.mlcraft.elevationmod.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
-		"CarverMixin",
-		"MaterialRuleContextAccessor",
-		"MaterialRuleContextMixin",
-		"MinecraftServerMixin",
-		"RegistryElementCodecAccessor",
-		"SurfaceBuilderMixin",
-		"ThreadedAnvilChunkStorageMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
