@@ -6,8 +6,7 @@
         "type": "minecraft:noise",
         "settings": "mlcraft:realistic_ns",
         "biome_source": {
-          "type": "minecraft:fixed",
-          "biome": "minecraft:snowy_taiga"
+          "type": "mlcraft:mlcraftbiomesource"
         }
       }
     },

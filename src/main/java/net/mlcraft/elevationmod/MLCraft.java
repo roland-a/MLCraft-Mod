@@ -1,9 +1,9 @@
 package net.mlcraft.elevationmod;
 
+import com.mojang.serialization.Codec;
 import net.fabricmc.api.ModInitializer;
 
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.Registry;
+import net.minecraft.registry.*;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,11 +23,14 @@ public class MLCraft implements ModInitializer {
 		LOGGER.info("Hello Fabric world!");
 
 		Registry.register(Registries.DENSITY_FUNCTION_TYPE, new Identifier(MOD_ID, "reader"), Reader.CODEC);
+        Registry.register(Registries.BIOME_SOURCE, new Identifier(MOD_ID, "mlcraftbiomesource"), MLCraftBiomeSource.CODEC);
 
         try {
             Reader.init();
+            MLCraftBiomeSource.init();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
+
 }
