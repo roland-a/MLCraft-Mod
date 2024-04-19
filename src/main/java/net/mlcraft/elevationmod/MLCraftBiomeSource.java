@@ -1,18 +1,14 @@
 package net.mlcraft.elevationmod;
 
-//package net.minecraft.world.biome.source;
-
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import java.io.DataInputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.stream.Stream;
 
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.registry.RegistryEntryLookup;
 import net.minecraft.registry.RegistryOps;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.world.biome.Biome;
@@ -45,7 +41,6 @@ public class MLCraftBiomeSource extends BiomeSource{
 
     private static short[] biomes = null;
 
-    private static short[] elevation = null;
     private static int length;
 
     public static void init() throws IOException {
@@ -53,13 +48,13 @@ public class MLCraftBiomeSource extends BiomeSource{
 
         var d = new DataInputStream(new FileInputStream(file));
 
-        elevation = new short[d.available()/Short.BYTES];
+        biomes = new short[d.available()/Short.BYTES];
 
-        for (int i = 0 ; i < elevation.length; i++){
-            elevation[i] = d.readShort();
+        for (int i = 0 ; i < biomes.length; i++){
+            biomes[i] = d.readShort();
         }
 
-        length = (int)Math.sqrt(elevation.length);
+        length = (int)Math.sqrt(biomes.length);
     }
     @Override
     public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
