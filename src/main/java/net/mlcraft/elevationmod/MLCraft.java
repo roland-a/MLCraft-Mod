@@ -25,12 +25,15 @@ public class MLCraft implements ModInitializer {
 		Registry.register(Registries.DENSITY_FUNCTION_TYPE, new Identifier(MOD_ID, "reader"), Reader.CODEC);
         Registry.register(Registries.BIOME_SOURCE, new Identifier(MOD_ID, "mlcraftbiomesource"), MLCraftBiomeSource.CODEC);
 
+        /*
         try {
             Reader.init();
             MLCraftBiomeSource.init();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+
+         */
     }
 
 }

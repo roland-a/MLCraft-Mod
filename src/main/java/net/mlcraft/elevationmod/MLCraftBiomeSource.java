@@ -39,7 +39,7 @@ public class MLCraftBiomeSource extends BiomeSource{
         return CODEC;
     }
 
-    private static short[] biomes = null;
+    private static byte[] biomes = null;
 
     private static int length;
 
@@ -48,20 +48,20 @@ public class MLCraftBiomeSource extends BiomeSource{
 
         var d = new DataInputStream(new FileInputStream(file));
 
-        biomes = new short[d.available()/Short.BYTES];
+        biomes = new byte[d.available()/Byte.BYTES];
 
         for (int i = 0 ; i < biomes.length; i++){
-            biomes[i] = d.readShort();
+            biomes[i] = d.readByte();
         }
 
         length = (int)Math.sqrt(biomes.length);
     }
     @Override
     public RegistryEntry<Biome> getBiome(int x, int y, int z, MultiNoiseUtil.MultiNoiseSampler noise) {
-        x = Math.floorMod(x, length);
+        x = Math.floorMod(x,length);
         z = Math.floorMod(z,length);
 
-        var v = biomes[x*length+z];
+        var v = Byte.toUnsignedInt(biomes[x*length+z]);
 
         if(v == 0) {
             return this.desertBiome;
