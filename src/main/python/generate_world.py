@@ -323,10 +323,8 @@ def generate_world(
     total_len: int,
     rng,
     biomes: [BiomeInfo] = BiomeInfo.default_biomes(),
-    elevation_paste_len: int = 32,
+    paste_len: int = 32,
     elevation_interpolation: int = 32,
-    noisy_map_total_len: int = 64,
-    noisy_map_paste_len: int = 32,
     noisy_map_interpolation: int = 4,
     biome_n_layers: int = 4,
     biome_points_per_layer=lambda x: 16 * 2 ** x,
@@ -351,7 +349,7 @@ def generate_world(
     base = make_elevation_map(
         models=[biome.model for biome in biomes],
         biome_map=biome_map,
-        paste_len=elevation_paste_len,
+        paste_len=paste_len,
         total_len=total_len,
         rng=rng,
     )
@@ -361,9 +359,9 @@ def generate_world(
     noisy_maps = [
         make_elevation_map(
             models=[biomes[i].model],
-            biome_map=[NxN.ones(noisy_map_total_len)],
-            paste_len=noisy_map_paste_len,
-            total_len=noisy_map_total_len,
+            biome_map=[NxN.ones(paste_len*2)],
+            paste_len=paste_len,
+            total_len=paste_len*2,
             rng=rng,
         )
         .interpolate(noisy_map_interpolation) for i in range(len(biomes))
@@ -403,7 +401,7 @@ if __name__ == "__main__":
     rng = np.random.default_rng(0)
 
     generate_world(
-        id=2,
+        folder=str(0),
         total_len=128,
-        rng=rng
+        rng=rng,
     )
