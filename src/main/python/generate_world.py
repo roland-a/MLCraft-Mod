@@ -394,8 +394,10 @@ def generate_world(
     end = time.time()
 
     elapsed = end-start
+    n_kxk_blocks = (total_len*elevation_interpolation)**2/(1000**2)
 
-    print(f"Time to generate: {elapsed}, Seconds per 1000x1000 blocks: {elapsed / (total_len*elevation_interpolation)**2/1000**2}")
+    print(f"Time to generate: {elapsed}")
+    print(f"Seconds per 1000x1000 blocks: {elapsed / n_kxk_blocks}")
 
 if __name__ == "__main__":
     rng = np.random.default_rng(0)
