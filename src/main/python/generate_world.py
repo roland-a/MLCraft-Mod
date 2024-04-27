@@ -98,7 +98,7 @@ def make_biome_map(
     return make_map(layers)
 
 
-def biome_map_to_mc(biome_map: [NxN], path: str):
+def biome_map_to_mc(biome_map: [NxN], interpolation, path: str):
     import struct
 
     file = open(path, mode="wb")
@@ -120,7 +120,7 @@ def biome_map_to_mc(biome_map: [NxN], path: str):
         arr[x][y] = out
 
     arr = NxN(arr)
-    arr = arr.interpolate(16 // 4)
+    arr = arr.interpolate(interpolation // 4)
 
     for (x, y) in iter_square(total_len * (16 // 4)):
         out = round(arr[x, y])
@@ -343,7 +343,7 @@ def generate_world(
     )
 
     biome_map_to_png(biome_map, biomes, f"out/{folder}/biome")
-    biome_map_to_mc(biome_map, f"out/{folder}/biome")
+    biome_map_to_mc(biome_map, elevation_interpolation, f"out/{folder}/biome")
 
     print("Making elevation map...")
     base = make_elevation_map(
@@ -388,7 +388,8 @@ def generate_world(
     for (i, sb) in enumerate(noisy_maps):
         elevation += sb * smoothed_biome_map[i] * biomes[i].short_amp
 
-    elevation.to_png(f"out/{folder}/elevation").to_mc_format(f"out/{folder}/elevation")
+    elevation.to_png(f"out/{folder}/elevation")
+    elevation.to_mc_format(f"out/{folder}/elevation")
     print("Done!")
 
     end = time.time()
