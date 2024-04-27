@@ -1,4 +1,5 @@
 import dataclasses
+import os
 import time
 
 import numpy as np
@@ -97,10 +98,10 @@ def make_biome_map(
     return make_map(layers)
 
 
-def biome_map_to_mc(id: int, biome_map: [NxN]):
+def biome_map_to_mc(biome_map: [NxN], path: str):
     import struct
 
-    file = open(f"out/biome{id}", mode="wb")
+    file = open(path, mode="wb")
 
     n_biomes = len(biome_map)
     total_len = biome_map[0].len
@@ -127,7 +128,7 @@ def biome_map_to_mc(id: int, biome_map: [NxN]):
         file.write(struct.pack(">B", out))
 
 
-def biome_map_to_img(file_name: str, biome_map: [NxN], biomes: [BiomeInfo]):
+def biome_map_to_png(biome_map: [NxN], biomes: [BiomeInfo], path: str):
     n_biomes = len(biome_map)
     total_len = biome_map[0].len
 
@@ -149,7 +150,7 @@ def biome_map_to_img(file_name: str, biome_map: [NxN], biomes: [BiomeInfo]):
 
         img.putpixel((x,y), (r,g,b))
 
-    img.save(file_name)
+    img.save(path + ".png")
 
 
 def smooth_biome_map(base: [NxN], border_length: int) -> [NxN]:
@@ -318,7 +319,7 @@ def make_elevation_map(
 #         return [NxN(t.numpy()) for t in tensor]
 
 def generate_world(
-    id: int,
+    folder: str,
     total_len: int,
     rng,
     biomes: [BiomeInfo] = BiomeInfo.default_biomes(),
@@ -332,6 +333,8 @@ def generate_world(
 ):
     start = time.time()
 
+    os.mkdir(f"out/{folder}")
+
     print("Making biome map...")
     biome_map = make_biome_map(
         n_biomes=len(biomes),
@@ -341,12 +344,8 @@ def generate_world(
         rng=rng,
     )
 
-    biome_map_to_img(f"out/biome_map{id}.png", biome_map, biomes)
-    biome_map_to_mc(id, biome_map)
-
-    print("Smoothing biome map...")
-    smoothed_biome_map = smooth_biome_map(base=biome_map, border_length=16)
-    biome_map_to_img(f"out/biome_map_smoothed{id}.png", biome_map, biomes)
+    biome_map_to_png(biome_map, biomes, f"out/{folder}/biome")
+    biome_map_to_mc(biome_map, f"out/{folder}/biome")
 
     print("Making elevation map...")
     base = make_elevation_map(
@@ -356,7 +355,7 @@ def generate_world(
         total_len=total_len,
         rng=rng,
     )
-    base.to_png(f"out/init_elevation{id}")
+    base.to_png(f"out/{folder}/elevation_init")
 
     print("Making noisy maps...")
     noisy_maps = [
@@ -366,26 +365,32 @@ def generate_world(
             paste_len=noisy_map_paste_len,
             total_len=noisy_map_total_len,
             rng=rng,
-        ) for i in range(len(biomes))
+        )
+        .interpolate(noisy_map_interpolation) for i in range(len(biomes))
     ]
     for i, sb in enumerate(noisy_maps):
-        sb.to_png(f"out/noisy_map{i}-{id}")
+        sb.to_png(f"out/{folder}/noisy{i}")
 
-    print("Making amplitude map...")
+    print("Applying amplitude to elevation map...")
+    smoothed_biome_map = smooth_biome_map(base=biome_map, border_length=32)
+    biome_map_to_png(smoothed_biome_map, biomes, f"out/{folder}/biome_smoothed")
+
     amp_map = NxN.zero(total_len)
     for (i, a) in enumerate([biome.amp for biome in biomes]):
         amp_map += smoothed_biome_map[i] * a
-    amp_map.to_png(f"out/amp_map{id}")
+    amp_map.to_png(f"out/{folder}/amp")
+
+    elevation = base * amp_map
+    elevation.to_png(f"out/{folder}/elevation_amp")
 
     print("Interpolating elevation map...")
-    elevation = base * amp_map
     elevation = elevation.interpolate(elevation_interpolation)
 
     print("Adding noisy maps to elevation map...")
     for (i, sb) in enumerate(noisy_maps):
-        elevation += sb.interpolate(noisy_map_interpolation) * smoothed_biome_map[i] * biomes[i].short_amp
+        elevation += sb * smoothed_biome_map[i] * biomes[i].short_amp
 
-    elevation.to_png(f"out/elevation{id}").to_mc_format(f"out/elevation{id}")
+    elevation.to_png(f"out/{folder}/elevation").to_mc_format(f"out/{folder}/elevation")
     print("Done!")
 
     end = time.time()
