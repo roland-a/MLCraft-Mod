@@ -50,8 +50,8 @@ def make_biome_map(
             for (xi, yi) in iter_square(-1, 1):
                 xp, yp = p
 
-                xp += xi * total_len
-                yp += yi * total_len
+                xp += xi
+                yp += yi
 
                 d = (x - xp) ** 2 + (y - yp) ** 2
 
@@ -66,39 +66,27 @@ def make_biome_map(
 
         return p
 
+    def make_layers(rng) -> [[float, float]]:
+        return [
+            make_layer(points_per_layer(i), rng) for i in range(n_layers)
+        ]
+
     def make_layer(n_points: int, rng) -> [(float, float)]:
-        layer = []
-
-        for _ in range(n_points):
-            x = rng.random() * total_len
-            y = rng.random() * total_len
-
-            layer.append((x, y))
-
-        return layer
-
-    def make_layers(rng) -> [[(float, float)]]:
-        layers = []
-        for i in range(n_layers):
-            n_points = points_per_layer(i)
-
-            layer = make_layer(n_points, rng)
-
-            layers.append(layer)
-
-        return layers
+        return [
+            (rng.random(), rng.random()) for _ in range(n_points)
+        ]
 
     def make_map(layers: [[(float, float)]]) -> [NxN]:
         from helper import iter_square
 
         base = np.zeros(shape=(n_biomes, total_len, total_len), dtype=int)
 
-        for p in iter_square(total_len):
-            x, y = p
+        for (x, y) in iter_square(total_len):
+            p = (x/total_len, y/total_len)
 
-            tp = traverse_points(p, layers)
+            p = traverse_points(p, layers)
 
-            b = hash_point(tp) % n_biomes
+            b = hash_point(p) % n_biomes
 
             base[b][x][y] = 1
 
