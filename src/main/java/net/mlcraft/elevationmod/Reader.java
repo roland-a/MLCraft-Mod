@@ -46,7 +46,7 @@ public class Reader {
     public static void init() throws IOException {
         var file = FabricLoader.getInstance().getConfigDir().resolve("mlcraft/elevation").toFile();
 
-        var d = new DataInputStream(new FileInputStream(file));
+        var d = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
 
         elevation = new short[d.available()/Short.BYTES];
 

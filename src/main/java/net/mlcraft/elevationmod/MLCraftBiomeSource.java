@@ -3,6 +3,7 @@ package net.mlcraft.elevationmod;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
+import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -46,7 +47,7 @@ public class MLCraftBiomeSource extends BiomeSource{
     public static void init() throws IOException {
         var file = FabricLoader.getInstance().getConfigDir().resolve("mlcraft/biome").toFile();
 
-        var d = new DataInputStream(new FileInputStream(file));
+        var d = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
 
         biomes = new byte[d.available()/Byte.BYTES];
 
