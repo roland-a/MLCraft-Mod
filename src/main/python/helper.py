@@ -1,181 +1,164 @@
-import itertools
 import pickle
-
-import cv2
 import numpy as np
-from PIL import Image
+from typing import Callable
 
 
+# Unpickles a python object from a file
 def load(path: str):
-    return pickle.load(open(path, 'rb'))
+    import joblib
+    
+    with open(f"{path}.joblib", 'rb') as file:
+        return joblib.load(file)
 
 
+# Pickles a python object into a file
+# TODO, remove this function and instead use dedicated serializing, as pickling makes refactoring much harder
 def save(obj: any, path: str):
-    pickle.dump(obj, open(path, 'wb'))
+    import joblib
+    
+    write_with_backup(path, "joblib", lambda p: joblib.dump(obj, open(p, "wb")))
+    
+    
+# Converts a 2d numpy array to a greyscale png with 16-bit depth
+def to_png(arr: np.ndarray, path: str, min_max=None):
+    import cv2
 
-
-def iter_square(*args, steps=1):
-    if len(args) == 1:
-        mx = args[0]
-        return itertools.product(range(0, mx, steps), range(0, mx, steps))
-    elif len(args) == 2:
-        (mn, mx) = args
-        return itertools.product(range(mn, mx, steps), range(mn, mx, steps))
+    if min_max is not None:
+        min, max = min_max
     else:
-        raise Exception("Invalid number of arguments")
+        min, max = np.nanmin(arr), np.nanmax(arr)
 
 
-def into_pieces(arr: [], n: int):
-    result = [[]]
+    if np.nanmin(arr) < min or np.nanmax(arr) > max:
+        raise Exception(f"{min, max} must be wider than {np.nanmin(arr), np.nanmax(arr)}")
 
-    for a in arr:
-        if len(result[-1]) > n:
-            result.append([])
+    arr = arr.astype(dtype=float)
+    arr = np.nan_to_num(arr, nan=min)
+    arr -= min
+    arr /= (max-min)
 
-        result[-1].append(a)
+    arr = (arr * (2**16-1)).astype(dtype=np.uint16)
 
-    return result
+    write_with_backup(
+        path, "png", lambda p: cv2.imwrite(p, arr)
+    )
+    
+    
+# Moves old data about to be rewritten into a backup folder before writing a new file
+def write_with_backup(path, ext, on_path):
+    import time
+    import os
 
+    parent = "/".join(path.split("/")[:-1])
+    file = f"{path}.{ext}"
 
-class NxN:
-    def __init__(self, arr: np.ndarray):
-        if len(arr.shape) != 2: raise Exception(f"Must be 2d, instead shape is {arr.shape}")
-        if arr.shape[0] != arr.shape[1]: raise Exception(f"Must be Square, instead shape is {arr.shape}")
-
-        self.arr = arr
-
-    @staticmethod
-    def zero(length: int) -> "NxN":
-        return NxN(np.zeros(shape=(length, length), dtype=float))
-
-    @staticmethod
-    def ones(length: int) -> "NxN":
-        return NxN(np.ones(shape=(length, length), dtype=float))
-
-    @staticmethod
-    def random(length: int, rng) -> "NxN":
-        return NxN(rng.normal(size=(length, length)))
-
-    @property
-    def len(self) -> int:
-        return len(self.arr)
-
-    @property
-    def min(self) -> int:
-        return np.min(self.arr)
-
-    @property
-    def max(self) -> int:
-        return np.max(self.arr)
-
-    def is_zero(self) -> bool:
-        return not np.any(self.arr)
-
-    def __eq__(self, other):
-        raise Exception()
-
-    def __mul__(self, other) -> "NxN":
-        if type(other).__name__ == "NxN":
-            return self.binary_op(other, lambda x, y: x * y)
-
-        return NxN(self.arr * other)
-
-    def __add__(self, other: "NxN") -> "NxN":
-        return self.binary_op(other, lambda a, b: a + b)
-
-    def binary_op(self, other: "NxN", op) -> "NxN":
-        if self.len % other.len != 0 and other.len % self.len != 0:
-            raise Exception(f"arrays must be multiples of eachother: {self.len}, {other.len}")
-
-        length = max(self.len, other.len)
-
-        out = np.zeros(shape=(length, length), dtype=float)
-
-        for (x, y) in iter_square(length):
-            out[x][y] = op(self[x, y], other[x, y])
-
-        return NxN(out)
-
-    def __getitem__(self, item: (int, int)) -> float:
-        return self.arr[item[0] % self.len][item[1] % self.len]
-
-    def copy(self, start_x: int, start_y: int, length: int) -> "NxN":
-        out = np.zeros(shape=(length, length), dtype=float)
-
-        for (x, y) in iter_square(length):
-            out[x][y] = self[(start_x + x) % self.len, (start_y + y) % self.len]
-
-        return NxN(out)
-
-    def paste(self, r: "NxN", start_x: int, start_y: int) -> "NxN":
-        arr = self.arr.copy()
-
-        for x in range(r.len):
-            for y in range(r.len):
-                arr[(start_x + x) % self.len][(start_y + y) % self.len] = r[x, y]
-
-        return NxN(arr)
-
-    def lerp(self, other: "NxN", p: float) -> "NxN":
-        return (self * (1 - p)) + (other * p)
-
-    def interpolate(self, length: int) -> "NxN":
-        pad_len = 8 * length
-
-        arr = np.pad(self.arr, (pad_len, pad_len), mode='wrap')
-
-        arr = cv2.resize(arr, (len(arr) * length, len(arr) * length), interpolation=cv2.INTER_LANCZOS4)
-
-        arr = arr[pad_len * length:-pad_len * length, pad_len * length:-pad_len * length]
-
-        return NxN(arr)
-
-    def border(self, length: int) -> "NxN":
-        return NxN(
-            np.pad(self.arr[length:-length, length:-length], pad_width=(length, length), constant_values=0)
+    # Make the parent directory if it does not exist
+    if parent != "":
+        os.makedirs(
+            parent,
+            exist_ok=True
         )
 
-    def to_mc_format(self, name: str) -> "NxN":
-        import struct
+    # If there is already a file under this path, then move it into the backup
+    if os.path.isfile(file):
+        backup_parent = "tmp/backup/" + parent
 
-        mn = np.min(self.arr)
-        mx = np.max(self.arr)
+        os.makedirs(
+            backup_parent,
+            exist_ok=True
+        )
 
-        file = open(name, "wb")
-        for (x, y) in iter_square(self.len):
-            v = self[x, y]
+        # Add a unique suffix to the moved file, so it can't overwrite any other file
+        suffix = round(time.time())
+        backup_file = f"backup/{path}-{suffix}.{ext}"
 
-            v -= mn
-            v /= (mx - mn)
-            v *= 65535
-            v = int(v)
+        os.rename(
+            file,
+            backup_file
+        )
 
-            file.write(struct.pack(">H", v))
-        file.close()
+    on_path(file)
 
-        return self
 
-    def to_png(self, name: str, min_max: (int, int) = None):
-        if min_max is None:
-            mn = np.min(self.arr)
-            mx = np.max(self.arr)
-        else:
-            mn, mx = min_max
+# Returns whether a specified float is exactly an integer
+def is_int(v):
+    return v == int(v)
 
-        image = Image.new("L", size=(self.len, self.len))
-        for x in range(self.len):
-            for y in range(self.len):
-                v = self.arr[x][y]
+#splits the list into batches, with a batch size at most max_len
+def split(lst: list, max_len: int)->list[list]:
+    bulks = [[]]
 
-                v -= mn
-                v /= (mx - mn)
-                v *= 255
-                v = int(v)
+    for v in lst:
+        if len(bulks[-1]) >= max_len:
+            bulks.append([])
 
-                image.putpixel((x, y), v)
-        image.save(f"{name}.png")
+        bulks[-1].append(v)
 
-        return self
+    return bulks
 
-    def test_wrap(self) -> "NxN":
-        return self.copy(self.len * 3 // 2, self.len * 3 // 2, self.len)
+# Crops a 2d numpy image to a specified length
+def crop_to_len(img: np.ndarray, final_len: int|tuple[int,int]) -> np.ndarray:
+    if isinstance(final_len, int):
+        final_len = (final_len, final_len)
+
+    if img.shape == final_len:
+        return img
+
+    left_pad_x = (img.shape[0] - final_len[0])//2
+    left_pad_y = (img.shape[1] - final_len[1])//2
+
+    if left_pad_x<0 or left_pad_y<0:
+        raise Exception()
+
+    right_pad_x = (img.shape[0] - final_len[0])-left_pad_x
+    right_pad_y = (img.shape[1] - final_len[1])-left_pad_y
+
+    if left_pad_x != 0 and right_pad_x != 0:
+        img = img[left_pad_x:-right_pad_x, :]
+
+    if left_pad_y != 0 and right_pad_y != 0:
+        img = img[:, left_pad_y:-right_pad_y]
+
+    return img
+
+
+# Slices a 2d numpy array into a smaller 2d array, while wrapping around if the slice exceeds the boundary
+def slice_wrap_around(arr: np.ndarray, offset: tuple, slice_len: int)->np.ndarray:
+    out = np.empty(shape=(slice_len, slice_len), dtype=arr.dtype)
+
+    for i, _ in np.ndenumerate(out):
+        i = tuple(i%s for i, s in zip(i, arr.shape))
+        i_off = tuple((a+b)%s for a, b, s in zip(i, offset, arr.shape))
+
+        out[i] = arr[i_off]
+
+    return out
+
+# TODO, refactor this function so its more understandable
+def apply_wrap_around(left, right, right_offset: tuple, fn)->np.ndarray:
+    arr = left.copy()
+
+    for i, _ in np.ndenumerate(right):
+        i_off = tuple((i+o) % s for i, o, s in zip(i, right_offset, left.shape))
+
+        arr[i_off] = fn(left[i_off], right[i])
+
+    return arr
+
+
+# Interpolates a 2d numpy array while respecting wraparound boundaries
+def wrap_around_interpolate(arr: np.ndarray, inter_len: int)->np.ndarray:
+    import cv2
+
+    pad_len = 8 * inter_len
+
+    # Adds wrap-around padding to effectively allow wraparound interpolation to the non-padded areas
+    arr = np.pad(arr, (pad_len, pad_len), mode='wrap')
+
+    arr = cv2.resize(arr, (arr.shape[0] * inter_len, arr.shape[1] * inter_len), interpolation=cv2.INTER_LANCZOS4)
+
+    # Removes the padding
+    # TODO, use crop_to_len to remove padding
+    arr = arr[pad_len * inter_len:-pad_len * inter_len, pad_len * inter_len:-pad_len * inter_len]
+
+    return arr
