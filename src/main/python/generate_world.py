@@ -1,39 +1,110 @@
 import dataclasses
-import os
-import time
-
 import numpy as np
-import torch
 from denoising_diffusion_pytorch import GaussianDiffusion
-from PIL import Image
+from typing import Callable
+from matplotlib import pyplot as plt
+from helper import to_png
 
-from helper import NxN, iter_square, load, save, into_pieces
+# Slices a numpy array into a smaller array, while wrapping around if the slice exceeds the boundary
+def slice_wrap_around(arr: np.ndarray, offset: tuple, out_shape: int|tuple)->np.ndarray:
+    if isinstance(out_shape, int):
+        out_shape = (out_shape, ) * len(arr.shape)
 
-@dataclasses.dataclass
-class BiomeInfo:
-    model: GaussianDiffusion
-    amp: float
-    short_amp: float
-    rbg: (int,int,int)
+    result = np.zeros(shape=out_shape, dtype=arr.dtype)
 
-    @staticmethod
-    def default_biomes() -> ["BiomeInfo"]:
-        return [
-            BiomeInfo(model=load("in/desert_16"), amp=1/8, short_amp=1/128, rbg=(255, 255, 0)),
-            BiomeInfo(model=load("in/appalachians_16"), amp=1, short_amp=1/64, rbg=(128, 128, 128)),
-        ]
+    for i, _ in np.ndenumerate(result):
+        i_off = tuple((a+b)%s for a, b, s in zip(i, offset, arr.shape))
 
+        i = tuple(a % s for a, s in zip(i, result.shape))
+
+        result[i] = arr[i_off]
+
+    return result
+
+
+# Offsets the right array, wraps the right array around the left array, then performs actions between the two array where they overlap
+def offset_then_apply_wraparound(left, right, right_offset: tuple, fn)->np.ndarray:
+    arr = left.copy()
+
+    for i, _ in np.ndenumerate(right):
+        i_off = tuple((i+o) % s for i, o, s in zip(i, right_offset, left.shape))
+
+        arr[i_off] = fn(left[i_off], right[i])
+
+    return arr
+
+
+# Interpolates a 2d numpy array while respecting wraparound boundaries
+def wrap_around_interpolate(arr: np.ndarray, factor: int)->np.ndarray:
+    if arr.dtype == int:
+        arr = np.repeat(arr, factor, axis=0)
+        arr = np.repeat(arr, factor, axis=1)
+
+        return arr
+
+    from cv2 import resize, INTER_CUBIC, INTER_LANCZOS4
+
+    pad_len = 8 * factor, 8 * factor
+
+    # Adds wrap-around padding to effectively allow wraparound interpolation to the non-padded areas
+    arr = np.pad(arr, pad_len, mode="wrap")
+
+    arr = resize(arr, (arr.shape[1] * factor, arr.shape[0] * factor), interpolation=INTER_LANCZOS4)
+
+    # Removes the padding
+    # TODO, use crop_to_len to remove padding
+    arr = arr[pad_len[0] * factor:-pad_len[0] * factor, pad_len[1] * factor:-pad_len[1] * factor]
+
+    return arr
+
+
+# Returns how many 1000x1000 sections there are in a 2d numpy array
+def n_1000x1000(arr: np.ndarray) -> float:
+    assert len(arr.shape) == 2
+
+    return np.prod(arr.shape) / (1000**2)
+
+
+# Converts a 2d numpy array into a pure binary file at a specified path
+# The array's width and height must be equal, so that the image length can be determined by the square root of the number of entries
+def to_binary(arr: np.ndarray, path: str):
+    from helper import normalize_min_max
+    import struct
+
+    assert len(arr.shape) == 2
+    assert arr.shape[0] == arr.shape[1]
+
+    arr = normalize_min_max(
+        arr,
+        old_min_max=(np.nanmin(arr), np.nanmax(arr)),
+        new_min_max=(0, 255)
+    )
+
+    arr = arr.astype(dtype=np.uint8)
+
+    result = bytearray()
+
+    for (i, v) in np.ndenumerate(arr):
+        result += struct.pack("B", v)
+
+    with open(path, "wb") as f:
+        f.write(result)
+
+
+# Returns a simple biome map with N distinct biomes
+# Does not support groups like oceans/land or snowy/medium/hot yet
 def make_biome_map(
     n_biomes: int,
-    total_len: int,
+    map_len: int,
     n_layers: int,
-    points_per_layer,
-    rng
-) -> [NxN]:
-    import numpy as np
-    from helper import iter_square, NxN
+    points_per_layer: Callable[[int], int],
+    rng: np.random.Generator
+)->np.ndarray:
+    from itertools import product
 
-    def hash_point(p: (float, float)) -> int:
+    point = tuple[float, float]
+
+    def hash_point(p: point) -> int:
         import xxhash
         import struct
 
@@ -41,370 +112,226 @@ def make_biome_map(
 
         return xxhash.xxh32_intdigest(struct.pack('<f', x) + struct.pack('<f', y), seed=0)
 
-    def get_closest(p: (float, float), points: [(float, float)]) -> (float, float):
-        m = float("inf")
-        mp = None
+    def get_dist_sq(p1: point, p2: point)->float:
+        x1, y1 = p1
+        x2, y2 = p2
 
-        x, y = p
+        dx = abs(x1 - x2)
+        dy = abs(y1 - y2)
 
-        for p in points:
-            for (xi, yi) in iter_square(-1, 1):
-                xp, yp = p
+        if dx > .5:
+            dx = 1 - dx
+        if dy > .5:
+            dy = 1 - dy
 
-                xp += xi
-                yp += yi
+        return dx**2 + dy**2
 
-                d = (x - xp) ** 2 + (y - yp) ** 2
+    def get_closest(p: point, points: list[point]) -> point:
+        return min(
+            points,
+            key=lambda ps: get_dist_sq(p, ps)
+        )
 
-                if d < m:
-                    m = d
-                    mp = p
-        return mp
-
-    def traverse_points(p: (float, float), layers: [[(float, float)]]) -> (float, float):
+    def traverse_points(p: point, layers: list[list[point]]) -> point:
         for layer in reversed(layers):
             p = get_closest(p, layer)
 
         return p
 
-    def make_layers(rng) -> [[float, float]]:
+    def make_layers(rng) -> list[list[point]]:
         return [
             make_layer(points_per_layer(i), rng) for i in range(n_layers)
         ]
 
-    def make_layer(n_points: int, rng) -> [(float, float)]:
+    def make_layer(n_points: int, rng) -> list[point]:
         return [
             (rng.random(), rng.random()) for _ in range(n_points)
         ]
 
-    def make_map(layers: [[(float, float)]]) -> [NxN]:
-        from helper import iter_square
-
-        base = np.zeros(shape=(n_biomes, total_len, total_len), dtype=int)
-
-        for (x, y) in iter_square(total_len):
-            p = (x/total_len, y/total_len)
-
-            p = traverse_points(p, layers)
-
-            b = hash_point(p) % n_biomes
-
-            base[b][x][y] = 1
-
-        return [NxN(arr) for arr in base]
-
     layers = make_layers(rng)
 
-    return make_map(layers)
+    base = np.zeros(shape=(map_len, map_len), dtype=int)
+
+    for (x, y) in product(range(map_len), repeat=2):
+        p = (x / map_len, y / map_len)
+
+        p = traverse_points(p, layers)
+
+        b = hash_point(p) % n_biomes
+
+        base[x, y] = b
+
+    return base
 
 
-def biome_map_to_mc(biome_map: [NxN], interpolation, path: str):
-    import struct
+# Throws an assertion error if there is an issue with denoising the image
+def assert_denoisable(img: np.ndarray, denoise_map: np.ndarray, padding_len: int, denoisers) -> bool:
+    denoise_len = denoisers[0].image_size - padding_len * 2
 
-    file = open(path, mode="wb")
+    assert img.shape == denoise_map.shape
+    assert not np.isnan(img).any()
 
-    n_biomes = len(biome_map)
-    total_len = biome_map[0].len
+    assert len(denoise_map.shape) == 2
+    assert all(x % denoise_len == 0 for x in img.shape)
+    assert np.min(denoise_map) >= 0
+    assert np.max(denoise_map) < len(denoisers)
+    assert denoise_map.dtype == int
 
-    arr = np.zeros(shape=(total_len, total_len), dtype=float)
-    for (x, y) in iter_square(total_len):
-        out = None
-
-        for i in range(n_biomes):
-            if biome_map[i][x, y] == 1:
-                out = i
-
-        if out is None:
-            raise Exception()
-
-        arr[x][y] = out
-
-    arr = NxN(arr)
-    arr = arr.interpolate(interpolation // 4)
-
-    for (x, y) in iter_square(total_len * (16 // 4)):
-        out = round(arr[x, y])
-
-        file.write(struct.pack(">B", out))
+    assert all(x.image_size == denoisers[0].image_size for x in denoisers)
+    assert all(x.num_timesteps == denoisers[0].num_timesteps for x in denoisers)
 
 
-def biome_map_to_png(biome_map: [NxN], biomes: [BiomeInfo], path: str):
-    n_biomes = len(biome_map)
-    total_len = biome_map[0].len
-
-    img = Image.new("RGB", (total_len, total_len))
-
-    for (x, y) in iter_square(total_len):
-        r = 0
-        g = 0
-        b = 0
-
-        for i in range(n_biomes):
-            r += biome_map[i][x, y] * biomes[i].rbg[0]
-            g += biome_map[i][x, y] * biomes[i].rbg[1]
-            b += biome_map[i][x, y] * biomes[i].rbg[2]
-
-        r = int(r)
-        b = int(b)
-        g = int(g)
-
-        img.putpixel((x,y), (r,g,b))
-
-    img.save(path + ".png")
-
-
-def smooth_biome_map(base: [NxN], border_length: int) -> [NxN]:
-    if border_length == 0:
-        return base
-
-    n_biomes = len(base)
-    length = base[0].len
-
-    ret = np.zeros(shape=(n_biomes, length, length))
-
-    for x, y in iter_square(length):
-        for k in range(n_biomes):
-            sum = 0
-            total = 0
-
-            for (xk, yk) in iter_square(-border_length // 2, border_length // 2):
-                if xk ** 2 + yk ** 2 > (border_length // 2) ** 2:
-                    continue
-
-                sum += base[k][x + xk, y + yk]
-                total += 1
-
-            ret[k][x][y] = sum / total
-
-    return [NxN(arr) for arr in ret]
-
-
-def run_step(self: NxN, model: GaussianDiffusion, step: int):
-    arr = torch.from_numpy(
-        np.array([[self.arr]], dtype=np.float32),
-    )
-
-    out, _ = model.p_sample(
-        arr,
-        model.num_timesteps - 1 - step,
-        None
-    )
-
-    return NxN(out[0][0].numpy())
-
-
-def make_elevation_map(
-    models: [GaussianDiffusion],
-    biome_map: [NxN],
-    paste_len: int,
-    total_len: int,
-    rng,
+#Performs one step of denoising on a section of the array, then returns the results
+def denoise(
+    img: np.ndarray,
+    denoise_map: np.ndarray,
+    denoisers: list[GaussianDiffusion],
+    padding_len: int,
+    grid_offset: int,
+    step: int
 ):
-    from tqdm import tqdm
-    from helper import iter_square, NxN
+    def run_step(model, img, t):
+        import torch
+        from helper import crop_to_len
 
-    image_len = models[0].image_size
-    time_steps = models[0].num_timesteps
+        type = img.dtype
 
-    if (image_len - paste_len) % 2 != 0: raise Exception(f"{image_len}, {paste_len}")
+        model.eval()
 
-    pad_len = (image_len - paste_len) // 2
+        with torch.inference_mode():
+            img = torch.from_numpy(img).float()
 
-    img = NxN.random(total_len, rng)
+            # Turns the [N,N] array to [1,1,N,N]
+            # First 1 is for batch size, second 1 is for channel size
+            img = img.unsqueeze(0).unsqueeze(0)
 
-    for t in tqdm(range(0, time_steps)):
-        out = NxN.zero(total_len)
+            img, _ = model.p_sample(
+                img,
+                model.num_timesteps-1-t
+            )
 
-        for (xi, yi) in iter_square(0, total_len, steps=paste_len):
-            xi += t * (paste_len // time_steps)
-            yi += t * (paste_len // time_steps)
+            # Turns the [1,1,N,N] array back to [N,N]
+            img = img.squeeze(0).squeeze(0)
 
-            for i, model in enumerate(models):
-                r = img.copy(xi - pad_len, yi - pad_len, image_len)
+            img = img.numpy()
+            img = img.astype(type)
 
-                b = biome_map[i].copy(xi, yi, paste_len)
+            # Crops the final output to the denoise length
+            img = crop_to_len(img, denoise_len)
 
-                if b.is_zero():
-                    continue
+            return img
 
-                r = run_step(r, model, t)
+    denoise_len = denoisers[0].image_size - padding_len*2
 
-                r = r.copy(pad_len, pad_len, paste_len)
+    result = np.zeros_like(img)
 
-                r = r * b
+    assert_denoisable(result, denoise_map, padding_len, denoisers)
 
-                r = NxN.zero(total_len).paste(r, xi, yi)
+    for x, y in product(
+        range(0, img.shape[0], denoise_len),
+        range(0, img.shape[1], denoise_len)
+    ):
+        x += grid_offset
+        y += grid_offset
 
-                out += r
+        for i, b in enumerate(denoisers):
+            # grabs a section of the denoise map
+            b_section = slice_wrap_around(
+                denoise_map,
+                offset=(x + padding_len, y + padding_len),
+                out_shape=denoise_len
+            )
 
-        img = out
+            # prevents unneeded computation if the biome is nowhere on the section
+            if np.all(b_section != i):
+                continue
 
+            # grabs a section of the current image, plus padding
+            section = slice_wrap_around(
+                img,
+                offset=(x - padding_len, y - padding_len),
+                out_shape=denoise_len + padding_len * 2
+            )
+
+            # slightly denoises that section
+            # the padding is automatically cropped out
+            section = run_step(b, section, step)
+
+            # zeros out the location where the biome is not at
+            section *= (b_section == i)
+
+            # adds that section back
+            result = offset_then_apply_wraparound(
+                left=result,
+                right=section,
+                right_offset=(x, y),
+                fn=lambda l, r: l + r
+            )
+    return result
+
+
+# Returns a unique image according to a denoiser map with a list of denoisers
+def make_init_img(
+    rng: np.random.Generator,
+    denoise_map: np.ndarray,
+    denoisers: list[GaussianDiffusion],
+    padding_len: int,
+):
+    img = rng.uniform(size=denoise_map.shape).astype(np.float32)
+
+    assert_denoisable(img, denoise_map, padding_len, denoisers)
+
+    denoise_steps = denoisers[0].num_timesteps
+    denoise_len = denoisers[0].image_size - padding_len*2
+    
+    for t in tqdm(range(denoise_steps)):
+        grid_offset = (denoise_steps // denoise_len) * t
+
+        to_png(img, path=f"tmp/tmp/{t}")
+
+        img = denoise(
+            img=img,
+            denoise_map=denoise_map, 
+            denoisers=denoisers, 
+            grid_offset=grid_offset, 
+            padding_len=padding_len, 
+            step=t
+        )
+        
     return img
 
-# def make_base_blk(
-#     models: [GaussianDiffusion],
-#     biome_map: [NxN],
-#     paste_len: int,
-#     total_len: int,
-#     rng,
-#     pieces: int = 64
-# ):
-#     from tqdm import tqdm
-#     from helper import iter_square, NxN
-#
-#     image_len = models[0].image_size
-#     time_steps = models[0].num_timesteps
-#
-#     if (image_len - paste_len) % 2 != 0: raise Exception(f"{image_len}, {paste_len}")
-#
-#     pad_len = (image_len - paste_len) // 2
-#
-#     img = NxN.random(total_len, rng)
-#
-#     steps = (paste_len // time_steps)
-#
-#     for t in tqdm(range(0, time_steps), total=time_steps, position=0):
-#         out = NxN.zero(total_len)
-#
-#         for i, model in enumerate(models):
-#             blk_c = []
-#             blk_b = []
-#
-#             blk_in = []
-#             blk_out = []
-#
-#             for (xi, yi) in iter_square(total_len, steps=paste_len):
-#                 xi += t * steps
-#                 yi += t * steps
-#
-#                 b = biome_map[i].copy(xi, yi, paste_len)
-#                 if b.is_zero():
-#                     continue
-#
-#                 inp = img.copy(xi - pad_len, yi - pad_len, image_len)
-#
-#                 blk_c.append((xi, yi))
-#                 blk_b.append(b)
-#                 blk_in.append(inp)
-#
-#                 for b in tqdm(into_pieces(blk_in, pieces), position=1, disable=(len(blk_in) >= pieces)):
-#                     blk_out += run_step_bulk(model, b, t)
-#
-#             for ((xi, yi), b, r) in zip(blk_c, blk_b, blk_out):
-#                 r = r.copy(pad_len, pad_len, paste_len)
-#
-#                 r = r * b
-#
-#                 out += NxN.zero(total_len).paste(r, xi, yi)
-#
-#         img = out
-#
-#     return img
-# def run_step_bulk(model: GaussianDiffusion, blk: [NxN], step: int) -> [NxN]:
-#     model.eval()
-#
-#     with torch.no_grad():
-#         tensor = torch.stack([torch.from_numpy(b.arr) for b in blk]).type(torch.FloatTensor)
-#
-#         tensor = tensor.reshape((len(tensor), 1, model.image_size, model.image_size))
-#
-#         tensor, _ = model.p_sample(
-#             tensor,
-#             model.num_timesteps - 1 - step,
-#             None
-#         )
-#
-#         tensor = tensor.reshape((len(tensor), model.image_size, model.image_size))
-#
-#         return [NxN(t.numpy()) for t in tensor]
 
-def generate_world(
-    folder: str,
-    total_len: int,
-    rng,
-    biomes: [BiomeInfo] = BiomeInfo.default_biomes(),
-    paste_len: int = 32,
-    elevation_interpolation: int = 32,
-    noisy_map_interpolation: int = 4,
-    biome_n_layers: int = 4,
-    biome_points_per_layer=lambda x: 16 * 2 ** x,
+# Creates a new image similar to an initial image according to a denoiser map with a list of denoisers
+# Essentially noises the initial image to a certain degree, and denoises it according to the denoiser map
+def img_to_img(
+    init_img: np.ndarray,
+    denoise_map: np.ndarray,
+    denoisers: list[GaussianDiffusion],
+    padding_len: int,
+    similarity: float
 ):
-    start = time.time()
+    denoise_steps = denoisers[0].num_timesteps
+    denoise_len = denoisers[0].image_size - padding_len*2
 
-    os.mkdir(f"out/{folder}")
+    step = round(similarity * denoise_steps)
 
-    print("Making biome map...")
-    biome_map = make_biome_map(
-        n_biomes=len(biomes),
-        total_len=total_len,
-        n_layers=biome_n_layers,
-        points_per_layer=biome_points_per_layer,
-        rng=rng,
-    )
+    #renoises the image
+    init_img = denoisers[0].q_sample(
+        x_start=torch.from_numpy(init_img).unsqueeze(0).unsqueeze(0),
+        t=torch.tensor(denoisers[0].num_timesteps - 1 - step).unsqueeze(0)
+    ).squeeze(0).squeeze(0).numpy()
 
-    biome_map_to_png(biome_map, biomes, f"out/{folder}/biome")
-    biome_map_to_mc(biome_map, elevation_interpolation, f"out/{folder}/biome")
+    #denoises the image
+    for t in tqdm(range(step, denoise_steps)):
+        grid_offset = ((denoise_steps-step) // denoise_len) * t
 
-    print("Making elevation map...")
-    base = make_elevation_map(
-        models=[biome.model for biome in biomes],
-        biome_map=biome_map,
-        paste_len=paste_len,
-        total_len=total_len,
-        rng=rng,
-    )
-    base.to_png(f"out/{folder}/elevation_init")
-
-    print("Making noisy maps...")
-    noisy_maps = [
-        make_elevation_map(
-            models=[biomes[i].model],
-            biome_map=[NxN.ones(paste_len*2)],
-            paste_len=paste_len,
-            total_len=paste_len*2,
-            rng=rng,
+        init_img = denoise(
+            img=init_img,
+            denoise_map=denoise_map, 
+            denoisers=denoisers, 
+            grid_offset=grid_offset,
+            padding_len=padding_len,
+            step=t
         )
-        .interpolate(noisy_map_interpolation) for i in range(len(biomes))
-    ]
-    for i, sb in enumerate(noisy_maps):
-        sb.to_png(f"out/{folder}/noisy{i}")
 
-    print("Applying amplitude to elevation map...")
-    smoothed_biome_map = smooth_biome_map(base=biome_map, border_length=32)
-    biome_map_to_png(smoothed_biome_map, biomes, f"out/{folder}/biome_smoothed")
-
-    amp_map = NxN.zero(total_len)
-    for (i, a) in enumerate([biome.amp for biome in biomes]):
-        amp_map += smoothed_biome_map[i] * a
-    amp_map.to_png(f"out/{folder}/amp")
-
-    elevation = base * amp_map
-    elevation.to_png(f"out/{folder}/elevation_amp")
-
-    print("Interpolating elevation map...")
-    elevation = elevation.interpolate(elevation_interpolation)
-
-    print("Adding noisy maps to elevation map...")
-    for (i, sb) in enumerate(noisy_maps):
-        elevation += sb * smoothed_biome_map[i] * biomes[i].short_amp
-
-    elevation.to_png(f"out/{folder}/elevation")
-    elevation.to_mc_format(f"out/{folder}/elevation")
-    print("Done!")
-
-    end = time.time()
-
-    elapsed = end-start
-    n_kxk_blocks = (total_len*elevation_interpolation)**2/(1000**2)
-
-    print(f"Time to generate: {elapsed}")
-    print(f"Seconds per 1000x1000 blocks: {elapsed / n_kxk_blocks}")
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-
-    generate_world(
-        folder=str(0),
-        total_len=128,
-        rng=rng,
-    )
+    return init_img
