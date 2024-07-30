@@ -135,6 +135,51 @@ def crop_to_len(img: np.ndarray, final_len: int|tuple[int,int]) -> np.ndarray:
     return img
 
 
+# Returns a random section of a numpy array
+# This section will also be of a random rotation and will be randomly mirrored
+def random_section(
+    arr: np.ndarray,
+    section_len: int,
+    rng: np.random.Generator=np.random.default_rng()
+)->np.ndarray:
+    from math import sqrt, pi, ceil, sin, cos, degrees
+    from scipy.ndimage import rotate
+    from helper import crop_to_len
+
+    assert min(arr.shape) >= section_len * sqrt(2) > 0
+
+    angle = rng.uniform(0, 2*pi)
+
+    pre_rot_len = ceil((section_len * (abs(cos(angle)) + abs(sin(angle)))))+1
+
+    px_start = rng.integers(
+        low=0,
+        high=arr.shape[0]-pre_rot_len
+    )
+
+    py_start = rng.integers(
+        low=0,
+        high=arr.shape[1]-pre_rot_len
+    )
+
+    should_flip = rng.integers(low=0, high=1)
+
+    img = arr[
+        px_start:px_start + pre_rot_len,
+        py_start:py_start + pre_rot_len,
+    ]
+
+    if should_flip:
+        img = np.fliplr(img)
+
+    img = rotate(
+        input=img,
+        angle=degrees(angle),
+        order=1
+    )
+
+    return crop_to_len(img, section_len)
+
 def prepare_before_overwrite(path: str):
     import time
     import os
