@@ -97,7 +97,18 @@ def np_to_bytes(arr: np.ndarray, consumer: ByteConsumer)->None:
 
     consumer(arr.tobytes())
 
-     
+
+#Takes in a numpy array of an old min-max, then return a version that's rescaled to a new min-max
+def normalize_min_max(arr: np.ndarray, old_min_max: tuple[int, int], new_min_max: tuple[int, int])->np.ndarray:
+    arr = arr.copy()
+
+    arr = (arr - old_min_max[0]) / (old_min_max[1] - old_min_max[0])
+
+    arr = arr * (new_min_max[1] - new_min_max[0]) + new_min_max[0]
+
+    return arr
+
+
 # Converts a 2d numpy array to a greyscale png with 16-bit depth
 def to_png(arr: np.ndarray, path: str, min_max=None):
     import cv2
