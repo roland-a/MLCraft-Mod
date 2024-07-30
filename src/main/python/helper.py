@@ -3,20 +3,8 @@ import numpy as np
 from typing import Callable
 
 
-# Unpickles a python object from a file
-def load(path: str):
-    import joblib
-    
-    with open(f"{path}.joblib", 'rb') as file:
-        return joblib.load(file)
 
 
-# Pickles a python object into a file
-# TODO, remove this function and instead use dedicated serializing, as pickling makes refactoring much harder
-def save(obj: any, path: str):
-    import joblib
-    
-    write_with_backup(path, "joblib", lambda p: joblib.dump(obj, open(p, "wb")))
     
     
 # Converts a 2d numpy array to a greyscale png with 16-bit depth
