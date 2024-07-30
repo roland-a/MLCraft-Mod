@@ -3,10 +3,101 @@ import numpy as np
 from typing import Callable
 
 
+ByteConsumer = Callable[[bytes], None]
+ByteProducer = Callable[[int], bytes]
+
+_struct_i32 = Struct("<i")
+_struct_f32 = Struct("<f")
 
 
-    
-    
+# Returns a ByteProducer that returns sequences of bytes from a file of a specified path
+def produce_bytes(path: str):
+    class Reader:
+        def __call__(self, *args, **kwargs):
+            assert len(args) == 1
+            assert isinstance(args[0], int)
+            assert len(kwargs) == 0
+
+            return self.file.read(args[0])
+
+        def __del__(self):
+            self.file.close()
+
+    reader = Reader()
+    reader.file = open(path, 'rb')
+    return reader
+
+
+def int32_from_bytes(producer: ByteProducer)->int:
+    return _struct_i32.unpack(producer(4))[0]
+
+
+def float32_from_bytes(producer: ByteProducer)->float:
+    return _struct_f32.unpack(producer(4))[0]
+
+
+def np_from_bytes(producer: ByteProducer)->np.ndarray:
+    shape_len = int32_from_bytes(producer)
+    shape = []
+
+    for _ in range(shape_len):
+        shape.append(
+            int32_from_bytes(producer)
+        )
+
+    count = int(np.prod(shape))
+    size = count * 4
+
+    arr = np.frombuffer(producer(size), dtype=np.float32, count=count)
+
+    arr = arr.reshape(shape)
+
+    return arr
+
+
+# Returns a ByteConsumer that accepts sequences of bytes and places it in a file of a specified path
+def consume_bytes(path: str):
+    class Writer:
+        def __call__(self, *args, **kwargs):
+            assert len(args) == 1
+            assert isinstance(args[0], bytes | bytearray)
+            assert len(kwargs) == 0
+
+            self.file.write(args[0])
+
+        def __del__(self):
+            self.file.close()
+
+
+    writer = Writer()
+    writer.file = open(path, 'wb')
+
+    return writer
+
+
+def int32_to_bytes(f: float, consumer: ByteConsumer)->None:
+    consumer(
+        _struct_i32.pack(f)
+    )
+
+
+def float32_to_bytes(f: float, consumer: ByteConsumer)->None:
+    consumer(
+        _struct_f32.pack(f)
+    )
+
+
+def np_to_bytes(arr: np.ndarray, consumer: ByteConsumer)->None:
+    assert arr.dtype == np.float32
+
+    int32_to_bytes(len(arr.shape), consumer)
+
+    for s in arr.shape:
+        int32_to_bytes(s, consumer)
+
+    consumer(arr.tobytes())
+
+     
 # Converts a 2d numpy array to a greyscale png with 16-bit depth
 def to_png(arr: np.ndarray, path: str, min_max=None):
     import cv2
