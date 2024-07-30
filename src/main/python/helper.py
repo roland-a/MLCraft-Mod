@@ -145,10 +145,6 @@ def write_with_backup(path, ext, on_path):
     on_path(file)
 
 
-# Returns whether a specified float is exactly an integer
-def is_int(v):
-    return v == int(v)
-
 #splits the list into batches, with a batch size at most max_len
 def split(lst: list, max_len: int)->list[list]:
     bulks = [[]]
