@@ -216,6 +216,30 @@ def prepare_before_overwrite(path: str):
     #     print(e)
     #     pass
 
+
+# Returns a numpy array from a png file with a specified min-max
+def from_png(path: str, min_max:tuple[int,int]=(0,1))->np.ndarray:
+    import cv2
+    import numpy as np
+
+    img = cv2.imread(path, -1)
+
+    if img.dtype == np.uint8:
+        old_min_max = (0, 2**8-1)
+    elif img.dtype == np.uint16:
+        old_min_max = (0, 2**16-1)
+    else:
+        raise Exception()
+
+    img = normalize_min_max(
+        img,
+        old_min_max=old_min_max,
+        new_min_max=min_max
+    )
+    img = img.astype(dtype=np.float32)
+
+    return img
+
 # Converts a 2d numpy array to a greyscale png
 def to_png(arr: np.ndarray, path: str, min_max: tuple[int,int]=None, out=np.uint16):
     from cv2 import imwrite
