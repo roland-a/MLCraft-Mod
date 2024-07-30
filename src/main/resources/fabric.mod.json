@@ -19,12 +19,6 @@
 	"entrypoints": {
 		"main": [
 			"net.mlcraft.elevationmod.MLCraft"
-		],
-		"client": [
-			"net.mlcraft.elevationmod.MLCraftClient"
-		],
-		"fabric-datagen": [
-			"net.mlcraft.elevationmod.MLCraftDataGenerator"
 		]
 	},
 	"mixins": [
@@ -38,6 +32,5 @@
 	},
 	"suggests": {
 		"another-mod": "*"
-	},
-	"accessWidener": "mlcraft.accesswidener"
+	}
 }
