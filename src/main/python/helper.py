@@ -108,31 +108,6 @@ def normalize_min_max(arr: np.ndarray, old_min_max: tuple[int, int], new_min_max
 
     return arr
 
-
-# Converts a 2d numpy array to a greyscale png with 16-bit depth
-def to_png(arr: np.ndarray, path: str, min_max=None):
-    import cv2
-
-    if min_max is not None:
-        min, max = min_max
-    else:
-        min, max = np.nanmin(arr), np.nanmax(arr)
-
-
-    if np.nanmin(arr) < min or np.nanmax(arr) > max:
-        raise Exception(f"{min, max} must be wider than {np.nanmin(arr), np.nanmax(arr)}")
-
-    arr = arr.astype(dtype=float)
-    arr = np.nan_to_num(arr, nan=min)
-    arr -= min
-    arr /= (max-min)
-
-    arr = (arr * (2**16-1)).astype(dtype=np.uint16)
-
-    write_with_backup(
-        path, "png", lambda p: cv2.imwrite(p, arr)
-    )
-    
     
 # Moves old data about to be rewritten into a backup folder before writing a new file
 def write_with_backup(path, ext, on_path):
@@ -252,3 +227,36 @@ def wrap_around_interpolate(arr: np.ndarray, inter_len: int)->np.ndarray:
     arr = arr[pad_len * inter_len:-pad_len * inter_len, pad_len * inter_len:-pad_len * inter_len]
 
     return arr
+
+
+# Converts a 2d numpy array to a greyscale png
+def to_png(arr: np.ndarray, path: str, min_max: tuple[int,int]=None, out=np.uint16):
+    from cv2 import imwrite
+    import os
+
+    if min_max is not None:
+        min_max = min_max
+    else:
+        min_max = np.nanmin(arr), np.nanmax(arr)
+
+    if np.nanmin(arr) < min_max[0] or np.nanmax(arr) > min_max[1]:
+        raise Exception(f"{min_max[0], min_max[1]} must be wider than {np.nanmin(arr), np.nanmax(arr)}")
+
+    if min_max[0] == min_max[1]:
+        move_before_overwrite(
+            path + ".png"
+        )
+
+        imwrite(path + ".png", np.zeros_like(arr, dtype=out))
+
+    arr = arr.copy()
+    arr = arr.astype(dtype=np.float64)
+    arr = np.nan_to_num(arr, nan=min_max[0])
+    arr = normalize_min_max(
+        arr,
+        old_min_max=min_max,
+        new_min_max=(0, np.iinfo(out).max)
+    )
+    arr = arr.astype(dtype=out)
+
+    imwrite(path + ".png", arr)
