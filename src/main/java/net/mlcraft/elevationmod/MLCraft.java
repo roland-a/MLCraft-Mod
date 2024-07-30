@@ -1,6 +1,5 @@
 package net.mlcraft.elevationmod;
 
-import com.mojang.serialization.Codec;
 import net.fabricmc.api.ModInitializer;
 
 import net.minecraft.registry.*;
@@ -24,10 +23,11 @@ public class MLCraft implements ModInitializer {
 
 		Registry.register(Registries.DENSITY_FUNCTION_TYPE, new Identifier(MOD_ID, "reader"), Reader.CODEC);
         Registry.register(Registries.BIOME_SOURCE, new Identifier(MOD_ID, "mlcraftbiomesource"), MLCraftBiomeSource.CODEC);
+		Registry.register(Registries.DENSITY_FUNCTION_TYPE, new Identifier(MOD_ID, "reader"), ElevationReader.CODEC);
 
         try {
-            Reader.init();
             MLCraftBiomeSource.init();
+            ElevationReader.init();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

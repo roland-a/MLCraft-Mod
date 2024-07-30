@@ -1,19 +1,19 @@
 package net.mlcraft.elevationmod;
 
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.dynamic.CodecHolder;
 import net.minecraft.world.gen.densityfunction.DensityFunction;
 
-import java.awt.*;
-import java.io.*;
-import java.util.ArrayList;
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
 
-import static javax.imageio.ImageIO.*;
-
-public class Reader {
+public class ElevationReader {
     public static DensityFunction.Base MC_NOISE = new DensityFunction.Base(){
-        private final CodecHolder<? extends DensityFunction> CODEC_HOLDER = CodecHolder.of(CODEC);
+        private final CodecHolder<DensityFunction> CODEC_HOLDER = CodecHolder.of(ElevationReader.CODEC);
 
         @Override
         public double sample(NoisePos pos) {
@@ -38,21 +38,15 @@ public class Reader {
         }
     };
 
-    public static final Codec<? extends DensityFunction> CODEC = Codec.unit(MC_NOISE);
+    public static final MapCodec<DensityFunction> CODEC = MapCodec.unit(MC_NOISE);
 
-    private static short[] elevation = null;
+    private static byte[] elevation = null;
     private static int length;
 
     public static void init() throws IOException {
-        var file = FabricLoader.getInstance().getConfigDir().resolve("mlcraft/elevation").toFile();
+        var file = FabricLoader.getInstance().getConfigDir().resolve("mlcraft/elevation");
 
-        var d = new DataInputStream(new BufferedInputStream(new FileInputStream(file)));
-
-        elevation = new short[d.available()/Short.BYTES];
-
-        for (int i = 0 ; i < elevation.length; i++){
-            elevation[i] = d.readShort();
-        }
+        elevation = Helper.readByteFile(file);
 
         length = (int)Math.sqrt(elevation.length);
     }
@@ -63,7 +57,7 @@ public class Reader {
 
         var v = elevation[x*length+y];
 
-        return ((Short.toUnsignedInt(v) / 65535f) * 256) + 60;
+        return Byte.toUnsignedInt(v) + 60;
     }
 
 }
