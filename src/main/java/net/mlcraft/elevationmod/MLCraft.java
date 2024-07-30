@@ -21,13 +21,12 @@ public class MLCraft implements ModInitializer {
 
 		LOGGER.info("Hello Fabric world!");
 
-		Registry.register(Registries.DENSITY_FUNCTION_TYPE, new Identifier(MOD_ID, "reader"), Reader.CODEC);
-        Registry.register(Registries.BIOME_SOURCE, new Identifier(MOD_ID, "mlcraftbiomesource"), MLCraftBiomeSource.CODEC);
 		Registry.register(Registries.DENSITY_FUNCTION_TYPE, new Identifier(MOD_ID, "reader"), ElevationReader.CODEC);
+        Registry.register(Registries.BIOME_SOURCE, new Identifier(MOD_ID, "mlcraftbiomesource"), BiomeReader.CODEC);
 
         try {
-            MLCraftBiomeSource.init();
             ElevationReader.init();
+            BiomeReader.init();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
