@@ -108,42 +108,6 @@ def normalize_min_max(arr: np.ndarray, old_min_max: tuple[int, int], new_min_max
 
     return arr
 
-    
-# Moves old data about to be rewritten into a backup folder before writing a new file
-def write_with_backup(path, ext, on_path):
-    import time
-    import os
-
-    parent = "/".join(path.split("/")[:-1])
-    file = f"{path}.{ext}"
-
-    # Make the parent directory if it does not exist
-    if parent != "":
-        os.makedirs(
-            parent,
-            exist_ok=True
-        )
-
-    # If there is already a file under this path, then move it into the backup
-    if os.path.isfile(file):
-        backup_parent = "tmp/backup/" + parent
-
-        os.makedirs(
-            backup_parent,
-            exist_ok=True
-        )
-
-        # Add a unique suffix to the moved file, so it can't overwrite any other file
-        suffix = round(time.time())
-        backup_file = f"backup/{path}-{suffix}.{ext}"
-
-        os.rename(
-            file,
-            backup_file
-        )
-
-    on_path(file)
-
 
 # Crops a 2d numpy image to a specified length
 def crop_to_len(img: np.ndarray, final_len: int|tuple[int,int]) -> np.ndarray:
@@ -170,6 +134,42 @@ def crop_to_len(img: np.ndarray, final_len: int|tuple[int,int]) -> np.ndarray:
 
     return img
 
+
+def prepare_before_overwrite(path: str):
+    import time
+    import os
+
+    path = path.replace("/", os.sep)
+
+    parent = os.sep.join(path.split(os.sep)[:-1])
+
+    if parent != "":
+        os.makedirs(
+            parent,
+            exist_ok=True
+        )
+
+    os.makedirs(
+        "backup" + os.sep + parent,
+        exist_ok=True
+    )
+
+    if os.path.isfile(path):
+        return
+
+    # TODO create backup files
+    # # Add a unique suffix to the moved file, so it can't overwrite any other file
+    # suffix = str(round(time.time()))
+    # backup_path = "backup" + os.sep + path + suffix
+    #
+    # try:
+    #     os.rename(
+    #         path,
+    #         backup_path
+    #     )
+    # except FileExistsError as e:
+    #     print(e)
+    #     pass
 
 # Converts a 2d numpy array to a greyscale png
 def to_png(arr: np.ndarray, path: str, min_max: tuple[int,int]=None, out=np.uint16):
@@ -200,5 +200,7 @@ def to_png(arr: np.ndarray, path: str, min_max: tuple[int,int]=None, out=np.uint
         new_min_max=(0, np.iinfo(out).max)
     )
     arr = arr.astype(dtype=out)
+
+    move_before_overwrite(path + ".png")
 
     imwrite(path + ".png", arr)
